@@ -40,5 +40,6 @@ async def main():
 
     user_question = input("Ask the agent a question: ")
     response = await runner.run_debug(user_question)
+    print(response)
 
 asyncio.run(main())
