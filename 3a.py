@@ -3,6 +3,7 @@
 # 1. setup
 import os
 from dotenv import load_dotenv, dotenv_values
+load_dotenv() 
 import asyncio
 
 from typing import Any, Dict
@@ -17,7 +18,6 @@ from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 print("adk imported")
 
-load_dotenv() 
 
 APP_NAME = "default"
 USER_ID = "default"
@@ -159,7 +159,6 @@ async def main():
 
     print("Session State Contents:")
     print(session.state)
-    print("\n Notice the 'user:name' and 'user:country' keys storing our data!")
 
 
 asyncio.run(main())
