@@ -1,15 +1,23 @@
 import os
-from dotenv import load_dotenv, dotenv_values
-load_dotenv() 
+import warnings
+import logging
 import asyncio
+
+# Suppress warnings
+warnings.filterwarnings("ignore")
+logging.getLogger("google").setLevel(logging.ERROR)
+
+from dotenv import load_dotenv
+load_dotenv()
 
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.memory import InMemoryMemoryService
-from google.adk.tools import load_memory, preload_memory
+from google.adk.tools import load_memory
 from google.genai import types
+
 print("ADK components imported")
 
 # Config
@@ -23,19 +31,21 @@ retry_config = types.HttpRetryOptions(
     http_status_codes=[429, 500, 503, 504],
 )
 
-# Services — note the () to instantiate them!
+# Services
 session_service = InMemorySessionService()
-memory_service = InMemoryMemoryService()  # <-- was missing ()
+memory_service = InMemoryMemoryService()
 
-# Agent — load_memory tool lets it query past memories
+# Agent
 user_agent = LlmAgent(
     model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
     name="MemoryDemoAgent",
-    instruction="Answer user questions in simple words. Use your memory tool to recall past conversations when relevant.",
-    tools=[load_memory],  # <-- gives the agent access to memory
+    instruction="""You are a helpful assistant.
+At the START of every response, you MUST call the load_memory tool with a relevant search query to retrieve past conversation context.
+Do this before answering anything. If memory returns results, use them in your answer.""",
+    tools=[load_memory],
 )
 
-# Runner with both services
+# Runner
 runner = Runner(
     agent=user_agent,
     app_name=APP_NAME,
@@ -71,32 +81,34 @@ async def run_session(
             user_id=USER_ID, session_id=session.id, new_message=query_content
         ):
             if event.is_final_response() and event.content and event.content.parts:
-                text = event.content.parts[0].text
-                if text and text != "None":
-                    print(f"Model > {text}")
+                for part in event.content.parts:
+                    if hasattr(part, "text") and part.text and part.text.strip():
+                        print(f"Model > {part.text}")
 
 
 async def main():
-    # First conversation
     await run_session(
         runner,
         "My favorite color is blue-green. Can you write a Haiku about it?",
         "conversation-01",
     )
 
-    # Add session to memory so future sessions can recall it
-    await memory_service.add_session_to_memory(
-        await session_service.get_session(
-            app_name=APP_NAME, user_id=USER_ID, session_id="conversation-01"
-        )
+    print("Getting session...")
+    session = await session_service.get_session(
+        app_name=APP_NAME, user_id=USER_ID, session_id="conversation-01"
     )
+    print(f"Got session, events: {len(session.events)}")
 
-    # Second conversation — agent can now recall the first
+    print("Adding to memory...")
+    await memory_service.add_session_to_memory(session)
+    print("Memory saved!")
+
+    print("Memory store:", memory_service._session_events)
+
     await run_session(
         runner,
         "What is my favorite color?",
         "conversation-02",
     )
-
 
 asyncio.run(main())
